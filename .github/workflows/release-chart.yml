@@ -1,0 +1,97 @@
+name: Release Helm Chart (chart-releaser)
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      pages: write
+
+    env:
+      CHARTS_DIR: charts
+      YQ_VERSION: v4.40.5
+      GPG_NAME: "${{ github.actor }}"
+      GPG_EMAIL: "${{ github.actor }}@users.noreply.github.com"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "$GPG_NAME"
+          git config user.email "$GPG_EMAIL"
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.3
+
+      - name: Install helpers (yq)
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: If running on a tag, set Chart.yaml version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          CLEAN_VERSION="${VERSION#v}"
+          echo "Setting chart version to $CLEAN_VERSION"
+          yq -i ".version = \"$CLEAN_VERSION\"" "$CHARTS_DIR/Chart.yaml"
+          git add "$CHARTS_DIR/Chart.yaml" && git commit -m "ci: set chart version $CLEAN_VERSION" || true
+
+      - name: Generate ephemeral GPG key
+        run: |
+          export GNUPGHOME="$(mktemp -d)"
+          gpg --batch --passphrase '' --quick-gen-key "$GPG_NAME <$GPG_EMAIL>" rsa4096 sign 1d
+          KEY_TAG="${GITHUB_REF_NAME:-$(date +%s)}"
+          gpg --homedir "$GNUPGHOME" --armor --export "$GPG_EMAIL" > "public-key-${KEY_TAG}.asc"
+          echo "GNUPGHOME=$GNUPGHOME" >> $GITHUB_ENV
+
+      - name: Helm deps
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+          (cd "$CHARTS_DIR" && helm dependency update || true)
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          charts_dir: .
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure artifacthub-repo.yml on gh-pages
+        run: |
+          set -e
+          git fetch origin gh-pages:gh-pages || true
+          git checkout gh-pages || git checkout -b gh-pages
+          if [ ! -f artifacthub-repo.yml ]; then
+            cat > artifacthub-repo.yml <<'EOF'
+repositoryID: ""
+owners:
+  - name: "OPSEC"
+    email: "security@example.com"
+EOF
+            git add artifacthub-repo.yml
+            git commit -m "chore: add artifacthub-repo.yml" || true
+          fi
+          git push origin gh-pages
+
+      - name: Attach public key to release (if running on release)
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: public-key-${{ github.ref_name }}.asc
