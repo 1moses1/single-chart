@@ -1,0 +1,13 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: simple-applicationapp-rgd
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: Simple-applicationApp
+    spec:
+      name: string
+      version: string | default="1.0.0"
+      environment: string | default="production"
+  resources: []
