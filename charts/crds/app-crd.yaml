@@ -1,0 +1,45 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: simple-applicationapps.kro.run
+spec:
+  group: kro.run
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Application name
+                version:
+                  type: string
+                  description: Application version
+                  default: 1.0.0
+                environment:
+                  type: string
+                  description: Deployment environment
+                  enum:
+                    - development
+                    - staging
+                    - production
+                  default: production
+              required:
+                - name
+  scope: Namespaced
+  names:
+    plural: simple-applicationapps
+    singular: simple-applicationapp
+    kind: Simple-applicationApp
