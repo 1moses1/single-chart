@@ -1,0 +1,11 @@
+apiVersion: kro.run/v1alpha1
+kind: Simple-applicationApp
+metadata:
+  name: {{ .Release.Name }}-app-instance
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "simple-application.labels" . | nindent 4 }}
+spec:
+  name: {{ .Values.app.name }}
+  version: {{ .Values.app.version }}
+  environment: {{ .Values.app.environment }}
